@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shit Code - Microenvironment</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0; padding: 15px;
+            background-color: #0d1117; color: #c9d1d9;
+            font-family: 'Consolas', 'Courier New', monospace;
+            display: flex; flex-direction: column; min-height: 100vh;
+        }
+        h2 { color: #58a6ff; text-align: center; margin-top: 0; font-size: 1.2rem; }
+        .container { display: flex; flex-direction: column; flex: 1; gap: 10px; }
+        
+        /* 转义工具区 */
+        .tool-box {
+            display: flex; gap: 8px; background: #161b22; padding: 10px; 
+            border-radius: 6px; border: 1px solid #30363d; flex-wrap: wrap;
+        }
+        .tool-box input {
+            flex: 1; padding: 8px; border-radius: 4px; border: 1px solid #30363d;
+            background: #0d1117; color: #58a6ff; outline: none; min-width: 150px;
+        }
+        
+        textarea, pre {
+            width: 100%; border: 1px solid #30363d; border-radius: 6px;
+            background-color: #161b22; color: #79c0ff; padding: 10px;
+            font-family: inherit; font-size: 14px; outline: none;
+        }
+        textarea { flex: 1; resize: vertical; min-height: 150px; color: #e6edf3; }
+        pre { flex: 1; overflow-y: auto; color: #3fb950; white-space: pre-wrap; margin: 0; min-height: 100px;}
+        
+        .btn-group { display: flex; gap: 10px; }
+        button {
+            flex: 1; padding: 12px; border-radius: 6px; border: none;
+            font-weight: bold; font-size: 15px; cursor: pointer;
+            transition: 0.2s; color: white;
+        }
+        #genBtn { background-color: #d29922; }
+        #copyBtn { background-color: #8a2be2; }
+        #runBtn { background-color: #238636; }
+        #clearBtn { background-color: #da3633; }
+        button:active { opacity: 0.8; }
+        
+        .status { color: #8b949e; font-size: 12px; text-align: right; height: 15px;}
+    </style>
+</head>
+<body>
+
+    <h2>💩 Shit Code (Microenvironment) 💩</h2>
+    
+    <div class="container">
+        <!-- 字符转义工具 -->
+        <div class="tool-box">
+            <input type="text" id="strInput" placeholder="输入要转义的文本 (如: A)">
+            <button id="genBtn" style="flex: 0.4; padding: 8px;">生成代码</button>
+        </div>
+        
+        <!-- 代码编辑区 -->
+        <textarea id="codeInput" placeholder="在这里输入 Shit Code...">
+~!@#$ 这是一个打印 A 的示例 $#@!~
+< 
+++++++++++++++++++++++++++++++++
+++++++++++++++++++++++++++++++++
++
+>#
+        </textarea>
+        <div class="status" id="statusMsg"></div>
+        
+        <!-- 操作按钮 -->
+        <div class="btn-group">
+            <button id="copyBtn">📋 复制代码</button>
+            <button id="runBtn">▶ 运行</button>
+            <button id="clearBtn">✖ 清空</button>
+        </div>
+        
+        <!-- 输出控制台 -->
+        <pre id="output"></pre>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. 核心词法/语法引擎 (JS版)
+        // ==========================================
+        function runShitCode(source) {
+            let output = "";
+            let tokens = [];
+            
+            for (let i = 0; i < source.length; i++) {
+                let c = source[i];
+                if (c.match(/\s/)) continue;
+                
+                if (c === '~' && source.substr(i, 5) === '~!@#$') {
+                    i += 4;
+                    while (i < source.length && source.substr(i, 5) !== '$#@!~') i++;
+                    if (i < source.length) i += 4;
+                    continue;
+                }
+                
+                if (c === '>' && source[i+1] === '#') {
+                    tokens.push(">#"); i++; continue;
+                }
+                
+                if ("<>^+-/_$@?".includes(c)) tokens.push(c);
+            }
+
+            let stack = [];
+            let pc = 0;
+            let maxSteps = 200000; 
+            let steps = 0;
+
+            function findMatchingBrace(startPos, openChar) {
+                let depth = 1;
+                for (let i = startPos + 1; i < tokens.length; i++) {
+                    if (tokens[i] === openChar) depth++;
+                    else if (tokens[i] === "?") depth--;
+                    if (depth === 0) return i;
+                }
+                throw new Error("语法错误: 缺少 '?' 闭合");
+            }
+
+            try {
+                while (pc < tokens.length && steps < maxSteps) {
+                    steps++;
+                    let op = tokens[pc];
+
+                    if (op === "<") stack.push(0);
+                    else if (op === ">") stack.pop();
+                    else if (op === "^") stack = [];
+                    else if (op === "+") { if (stack.length > 0) stack[stack.length - 1]++; }
+                    else if (op === "-") { if (stack.length > 0) stack[stack.length - 1]--; }
+                    else if (op === ">#") {
+                        if (stack.length > 0) {
+                            let val = stack.pop();
+                            output += String.fromCharCode(val);
+                        }
+                    } 
+                    else if (op === "/") {
+                        let cond = stack.pop() || 0;
+                        if (cond !== 0) {
+                            // 条件为真，继续
+                        } else {
+                            let depth = 1, j = pc + 1;
+                            while (j < tokens.length) {
+                                if (tokens[j] === '/') depth++;
+                                if (tokens[j] === '?') depth--;
+                                if (tokens[j] === '_' && depth === 1) break;
+                                if (depth === 0) break;
+                                j++;
+                            }
+                            pc = j - 1; 
+                        }
+                    } 
+                    else if (op === "_") {
+                        let depth = 1, j = pc + 1;
+                        while (j < tokens.length) {
+                            if (tokens[j] === '/') depth++;
+                            if (tokens[j] === '?') depth--;
+                            if (depth === 0) break;
+                            j++;
+                        }
+                        pc = j; 
+                    } 
+                    else if (op === "$") {
+                        let endPos = findMatchingBrace(pc, "$");
+                        if (stack.length > 0 && stack[stack.length - 1] !== 0) {
+                            // 条件为真，继续
+                        } else {
+                            pc = endPos; 
+                        }
+                    } 
+                    else if (op === "@") {
+                         if (stack.length > 0) {
+                            let count = stack.pop();
+                            let endPos = findMatchingBrace(pc, "@");
+                            if (count > 0) {
+                                stack.push(count - 1);
+                            } else {
+                                pc = endPos;
+                            }
+                         } else {
+                             let endPos = findMatchingBrace(pc, "@");
+                             pc = endPos;
+                         }
+                    }
+                    pc++;
+                }
+                
+                if (steps >= maxSteps) output += "\n[警告] 达到最大执行步数，可能有死循环！";
+            } catch (e) {
+                output += "\n[错误] " + e.message;
+            }
+            return output || "(运行完毕，无输出)";
+        }
+
+        // ==========================================
+        // 2. UI 交互与字符转义
+        // ==========================================
+        const codeInput = document.getElementById('codeInput');
+        const outputDiv = document.getElementById('output');
+        const strInput = document.getElementById('strInput');
+        const statusMsg = document.getElementById('statusMsg');
+
+        // 字符转义器 (String -> Shit Code)
+        document.getElementById('genBtn').addEventListener('click', () => {
+            let text = strInput.value;
+            if (!text) { statusMsg.textContent = "请输入要转义的文本"; return; }
+            
+            let generatedCode = `~!@#$ 自动生成的代码： ${text} $#@!~\n`;
+            let totalPlus = 0;
+
+            for (let i = 0; i < text.length; i++) {
+                let charCode = text.charCodeAt(i);
+                // 防止字符太离谱 (比如中文字符 ASCII 超限)
+                if (charCode > 127) { 
+                    statusMsg.textContent = "警告: 仅支持标准 ASCII 字符 (英文/数字/符号)";
+                    continue; 
+                }
+                generatedCode += "<\n";
+                generatedCode += "+".repeat(charCode) + "\n";
+                generatedCode += ">#\n";
+                totalPlus += charCode;
+            }
+
+            codeInput.value = generatedCode;
+            statusMsg.textContent = `生成成功！共敲了 ${totalPlus} 个加号。`;
+        });
+
+        // 一键复制
+        document.getElementById('copyBtn').addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(codeInput.value);
+                statusMsg.textContent = "代码已复制到剪贴板！";
+            } catch (err) {
+                // 兼容性回退方案 (针对某些平板浏览器)
+                codeInput.select();
+                document.execCommand('copy');
+                statusMsg.textContent = "代码已复制 (execCommand)！";
+            }
+            setTimeout(() => statusMsg.textContent = "", 3000);
+        });
+
+        // 运行
+        document.getElementById('runBtn').addEventListener('click', () => {
+            outputDiv.textContent = ">> 正在编译并执行...\n";
+            setTimeout(() => {
+                let result = runShitCode(codeInput.value);
+                outputDiv.textContent = ">> 输出结果:\n" + result;
+            }, 50);
+        });
+
+        // 清空
+        document.getElementById('clearBtn').addEventListener('click', () => {
+            outputDiv.textContent = "";
+            statusMsg.textContent = "";
+        });
+    </script>
+</body>
+</html>

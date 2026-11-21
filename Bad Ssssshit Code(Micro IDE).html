@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bad Ssssshit Code - Micro IDE</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0; padding: 10px;
+            background-color: #0d1117; color: #c9d1d9;
+            font-family: 'Consolas', 'Courier New', monospace;
+            display: flex; flex-direction: column; height: 100vh;
+            position: relative;
+        }
+        h2 { color: #ff7b72; text-align: center; margin: 5px 0 10px 0; font-size: 1.2rem; display: flex; justify-content: center; align-items: center; gap: 10px;}
+        
+        /* 设置按钮 */
+        #settingsBtn {
+            position: absolute; top: 10px; right: 15px;
+            background: none; border: none; color: #8b949e; font-size: 20px;
+            cursor: pointer; z-index: 10; transition: transform 0.3s;
+        }
+        #settingsBtn:hover { transform: rotate(90deg); color: #58a6ff; }
+
+        /* 设置面板 */
+        #settingsPanel {
+            display: none; position: absolute; top: 40px; right: 15px;
+            background-color: #161b22; border: 1px solid #30363d;
+            border-radius: 8px; padding: 15px; z-index: 20;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5); width: 260px;
+        }
+        #settingsPanel h3 { margin: 0 0 10px 0; font-size: 14px; color: #58a6ff; border-bottom: 1px solid #30363d; padding-bottom: 5px; }
+        .setting-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 13px; }
+        .setting-row input[type="number"] { width: 90px; padding: 4px; background: #0d1117; border: 1px solid #30363d; color: #58a6ff; border-radius: 4px; }
+        
+        .setting-btn { width: 100%; padding: 8px; background: #238636; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; margin-top: 10px; }
+        .setting-btn:hover { background: #2ea043; }
+        
+        /* 危险按钮样式 */
+        .danger-btn { background-color: #da3633; margin-top: 5px; }
+        .danger-btn:hover { background-color: #f85149; }
+
+        .container { display: flex; flex-direction: column; flex: 1; gap: 10px; min-height: 0; }
+        
+        .tool-box {
+            display: flex; gap: 8px; background: #161b22; padding: 8px; 
+            border-radius: 6px; border: 1px solid #30363d;
+        }
+        .tool-box input {
+            flex: 1; padding: 6px; border-radius: 4px; border: 1px solid #30363d;
+            background: #0d1117; color: #58a6ff; outline: none; font-family: inherit;
+        }
+        #genBtn { background-color: #d29922; color: white; padding: 0 12px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
+        
+        .editor-container {
+            position: relative; flex: 2; border: 1px solid #30363d; border-radius: 6px;
+            background-color: #161b22; overflow: hidden; display: flex;
+        }
+        /* 默认状态：高亮层可见，输入层透明 */
+        #highlighting {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            padding: 10px; margin: 0; font-family: inherit; font-size: 14px;
+            line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;
+            color: #e6edf3; pointer-events: none; overflow: auto;
+            display: block;
+        }
+        #codeInput {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            padding: 10px; margin: 0; font-family: inherit; font-size: 14px;
+            line-height: 1.5; background: transparent; color: transparent;
+            caret-color: white; border: none; outline: none; resize: none;
+            white-space: pre-wrap; word-wrap: break-word; overflow: auto; z-index: 2;
+        }
+        /* 关闭高亮时的样式 */
+        .no-highlight #highlighting { display: none; }
+        .no-highlight #codeInput { color: #e6edf3; }
+        
+        /* ========== 核心高亮颜色定义 ========== */
+        .token-comment { color: #8b949e; font-style: italic; }
+        .token-control { color: #ff9999; font-weight: bold; } 
+        .token-stack   { color: #a5d6ff; font-weight: bold; } 
+        .token-output  { color: #d2a8ff; font-weight: bold; } 
+        .token-math    { color: #fce369; font-weight: bold; } 
+        .token-bracket-fold { color: #56d4dd; font-weight: bold; } 
+        .token-mul     { color: #ff00ff; font-weight: bold; } 
+        
+        .token-bracket-1 { color: #ff7eb3; font-weight: bold; }
+        .token-bracket-2 { color: #7bc8ff; font-weight: bold; }
+        .token-bracket-3 { color: #fce369; font-weight: bold; }
+        .token-bracket-4 { color: #85e089; font-weight: bold; }
+
+        .btn-group { display: flex; gap: 8px; }
+        button.action-btn {
+            flex: 1; padding: 10px; border-radius: 6px; border: none;
+            font-weight: bold; font-size: 14px; cursor: pointer; color: white;
+        }
+        #runBtn { background-color: #238636; }
+        #copyBtn { background-color: #8a2be2; }
+        #clearBtn { background-color: #da3633; }
+        
+        pre#output {
+            flex: 1; border: 1px solid #30363d; border-radius: 6px;
+            background-color: #0d1117; color: #3fb950; padding: 10px;
+            font-family: inherit; font-size: 14px; overflow-y: auto; margin: 0;
+            white-space: pre-wrap;
+        }
+        .status { color: #8b949e; font-size: 12px; text-align: right; }
+    </style>
+</head>
+<body>
+
+    <button id="settingsBtn" title="设置">⚙️</button>
+
+    <div id="settingsPanel">
+        <h3>⚙️ IDE 设置</h3>
+        <div class="setting-row">
+            <span>语法高亮</span>
+            <input type="checkbox" id="setHighlight" checked>
+        </div>
+        <div class="setting-row">
+            <span>限制最大步数</span>
+            <input type="checkbox" id="setStepLimit" checked>
+        </div>
+        <div class="setting-row">
+            <span>最大步数</span>
+            <input type="number" id="setMaxSteps" value="500000" step="10000">
+        </div>
+        <button class="setting-btn" id="restoreCodeBtn">恢复默认演示代码</button>
+        
+        <div style="margin-top: 15px; border-top: 1px dashed #30363d; padding-top: 10px;">
+            <button class="setting-btn danger-btn" id="clearAllBtn">⚠️ 清除所有内容</button>
+        </div>
+    </div>
+
+    <h2>💩 Bad Ssssshit Code (Micro IDE) 💩</h2>
+    
+    <div class="container">
+        <div class="tool-box">
+            <input type="text" id="strInput" placeholder="输入文本转译为 Shit Code...">
+            <button id="genBtn">生成</button>
+        </div>
+        
+        <div class="editor-container" id="editorContainer">
+            <pre id="highlighting"><code id="highlighting-content"></code></pre>
+            <textarea id="codeInput" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
+        </div>
+        <div class="status" id="statusMsg">Ctrl+Enter 运行 | Tab 缩进</div>
+        
+        <div class="btn-group">
+            <button class="action-btn" id="copyBtn">📋 复制</button>
+            <button class="action-btn" id="runBtn">▶ 运行 (Ctrl+Enter)</button>
+            <button class="action-btn" id="clearBtn">✖ 清空</button>
+        </div>
+        
+        <pre id="output"></pre>
+    </div>
+
+    <script>
+        const DEFAULT_CODE = `~!@#$ Bad Ssssshit Code 疯狂运算演示 $#@!~
+<
+++++++++++  (10)
+<
+++++++      (6)
+<
+++          (2)
+{ [ * ] }   (吸干栈内元素: (10 + 6 + 2) 连加折叠，结果 18，取模 256 = 18)
+>#          (打印 ASCII 18，不可见)
+
+<
+++++++++++  (10)
+<
+++++++      (6)
+{ [ + ] }   (加法折叠 10 + 6 = 16，取模 256 = 16)
+>#
+
+<
+++++
+<
+++++
+{ [ * ] }   (乘法折叠，本质是 4*4=16 连加，取模 256 = 16)`;
+
+        const codeInput = document.getElementById('codeInput');
+        const highlightingContent = document.getElementById('highlighting-content');
+        const highlightingLayer = document.getElementById('highlighting');
+        const editorContainer = document.getElementById('editorContainer');
+        
+        codeInput.value = DEFAULT_CODE;
+
+        // ==========================================
+        // 1. 设置面板逻辑
+        // ==========================================
+        const settingsBtn = document.getElementById('settingsBtn');
+        const settingsPanel = document.getElementById('settingsPanel');
+        const setHighlight = document.getElementById('setHighlight');
+        const setStepLimit = document.getElementById('setStepLimit');
+        const setMaxSteps = document.getElementById('setMaxSteps');
+        const restoreCodeBtn = document.getElementById('restoreCodeBtn');
+        const clearAllBtn = document.getElementById('clearAllBtn');
+
+        settingsBtn.addEventListener('click', () => {
+            settingsPanel.style.display = settingsPanel.style.display === 'block' ? 'none' : 'block';
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!settingsPanel.contains(e.target) && e.target !== settingsBtn) {
+                settingsPanel.style.display = 'none';
+            }
+        });
+
+        setHighlight.addEventListener('change', (e) => {
+            if (e.target.checked) {
+                editorContainer.classList.remove('no-highlight');
+                updateHighlight();
+            } else {
+                editorContainer.classList.add('no-highlight');
+            }
+        });
+
+        setStepLimit.addEventListener('change', (e) => {
+            setMaxSteps.disabled = !e.target.checked;
+        });
+
+        restoreCodeBtn.addEventListener('click', () => {
+            codeInput.value = DEFAULT_CODE;
+            updateHighlight();
+            settingsPanel.style.display = 'none';
+            statusMsg.textContent = "已恢复默认代码";
+            setTimeout(() => statusMsg.textContent = "Ctrl+Enter 运行 | Tab 缩进", 3000);
+        });
+
+        // 清除所有内容事件
+        clearAllBtn.addEventListener('click', () => {
+            codeInput.value = "";
+            document.getElementById('output').textContent = "";
+            document.getElementById('strInput').value = "";
+            updateHighlight();
+            settingsPanel.style.display = 'none';
+            statusMsg.textContent = "⚠️ 已彻底清除所有代码与输出";
+            setTimeout(() => statusMsg.textContent = "Ctrl+Enter 运行 | Tab 缩进", 3000);
+        });
+
+        // ==========================================
+        // 2. 语法高亮逻辑
+        // ==========================================
+        function updateHighlight() {
+            if (!setHighlight.checked) return;
+
+            let code = codeInput.value;
+            let result = "";
+            let depth = 0;
+            let i = 0;
+            
+            while (i < code.length) {
+                let c = code[i];
+                
+                if (c === '~' && code.substr(i, 5) === '~!@#$') {
+                    let end = code.indexOf('$#@!~', i + 5);
+                    if (end === -1) end = code.length;
+                    else end += 5;
+                    let commentText = code.substring(i, end).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                    result += `<span class="token-comment">${commentText}</span>`;
+                    i = end;
+                    continue;
+                }
+                if (c === '>' && code[i+1] === '#') {
+                    result += `<span class="token-output">&gt;#</span>`;
+                    i += 2;
+                    continue;
+                }
+                if (c === '/' || c === '_' || c === '$' || c === '@') {
+                    if (c === '/' || c === '$' || c === '@') depth++;
+                    result += `<span class="token-control">${c}</span>`;
+                    i++;
+                    continue;
+                }
+                if (c === '?') {
+                    let currentDepth = depth;
+                    if (currentDepth > 0) {
+                        let bracketClass = "token-bracket-1";
+                        if (currentDepth % 4 === 0) bracketClass = "token-bracket-4";
+                        else if (currentDepth % 4 === 3) bracketClass = "token-bracket-3";
+                        else if (currentDepth % 4 === 2) bracketClass = "token-bracket-2";
+                        result += `<span class="${bracketClass}">?</span>`;
+                    } else {
+                        result += `<span class="token-bracket-1">?</span>`; 
+                    }
+                    if (depth > 0) depth--;
+                    i++;
+                    continue;
+                }
+                if (c === '{' || c === '}') {
+                    result += `<span class="token-math">${c}</span>`;
+                    i++;
+                    continue;
+                }
+                if (c === '[' || c === ']') {
+                    result += `<span class="token-bracket-fold">${c}</span>`;
+                    i++;
+                    continue;
+                }
+                if (c === '*') {
+                    result += `<span class="token-mul">${c}</span>`;
+                    i++;
+                    continue;
+                }
+                if (c === '<' || c === '>' || c === '^') {
+                    let symbol = c === '<' ? '&lt;' : (c === '>' ? '&gt;' : '^');
+                    result += `<span class="token-stack">${symbol}</span>`;
+                    i++;
+                    continue;
+                }
+                
+                let escaped = c.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                result += escaped;
+                i++;
+            }
+            highlightingContent.innerHTML = result;
+            highlightingLayer.scrollTop = codeInput.scrollTop;
+            highlightingLayer.scrollLeft = codeInput.scrollLeft;
+        }
+
+        codeInput.addEventListener('input', updateHighlight);
+        codeInput.addEventListener('scroll', () => {
+            highlightingLayer.scrollTop = codeInput.scrollTop;
+            highlightingLayer.scrollLeft = codeInput.scrollLeft;
+        });
+        updateHighlight(); 
+
+        codeInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Tab') {
+                e.preventDefault();
+                const start = codeInput.selectionStart;
+                const end = codeInput.selectionEnd;
+                codeInput.value = codeInput.value.substring(0, start) + "    " + codeInput.value.substring(end);
+                codeInput.selectionStart = codeInput.selectionEnd = start + 4;
+                updateHighlight();
+            }
+            if (e.ctrlKey && e.key === 'Enter') {
+                e.preventDefault();
+                runBtn.click();
+            }
+        });
+
+        // ==========================================
+        // 3. 执行引擎
+        // ==========================================
+        function runShitCode(source) {
+            let output = "";
+            let tokens = [];
+            
+            for (let i = 0; i < source.length; i++) {
+                let c = source[i];
+                if (c.match(/\s/)) continue;
+                if (c === '~' && source.substr(i, 5) === '~!@#$') {
+                    i += 4;
+                    while (i < source.length && source.substr(i, 5) !== '$#@!~') i++;
+                    if (i < source.length) i += 4;
+                    continue;
+                }
+                if (c === '>' && source[i+1] === '#') { tokens.push(">#"); i++; continue; }
+                if ("<>^+-/_$@?{}[]*".includes(c)) tokens.push(c);
+            }
+
+            let matchMap = {}; 
+            let blockStack = []; 
+            let elseMap = {}; 
+            
+            for (let i = 0; i < tokens.length; i++) {
+                let t = tokens[i];
+                if (t === '/' || t === '$' || t === '@') {
+                    blockStack.push({ type: t, index: i });
+                } else if (t === '_') {
+                    for (let j = blockStack.length - 1; j >= 0; j--) {
+                        if (blockStack[j].type === '/') {
+                            elseMap[blockStack[j].index] = i;
+                            break;
+                        }
+                    }
+                } else if (t === '?') {
+                    if (blockStack.length === 0) throw new Error("大便拉多了 (多余的 '?')");
+                    let openBlock = blockStack.pop();
+                    matchMap[openBlock.index] = i;
+                    if (openBlock.type === '/' && elseMap[openBlock.index] !== undefined) {
+                        matchMap[elseMap[openBlock.index]] = i;
+                    }
+                }
+            }
+            if (blockStack.length > 0) throw new Error("大便拉不干净 (缺少 '?' 闭合)");
+
+            let stack = [];
+            let pc = 0;
+            let maxSteps = setStepLimit.checked ? parseInt(setMaxSteps.value) || 500000 : Infinity;
+            let steps = 0;
+            let systemStack = []; 
+            let inMathBlock = false;
+            let inFoldBlock = false;
+
+            try {
+                while (pc < tokens.length && steps < maxSteps) {
+                    steps++;
+                    let op = tokens[pc];
+
+                    if (op === "{") { inMathBlock = true; pc++; continue; }
+                    if (op === "}") {
+                        inMathBlock = false;
+                        if (stack.length > 0) stack[stack.length - 1] = Math.abs(stack[stack.length - 1]) % 256;
+                        pc++; continue;
+                    }
+                    if (op === "[") { inFoldBlock = true; pc++; continue; }
+                    if (op === "]") { inFoldBlock = false; pc++; continue; }
+
+                    if (inMathBlock && inFoldBlock) {
+                        if (op === "+" || op === "*") {
+                            if (stack.length > 0) {
+                                let res = stack[0];
+                                if (op === "+") {
+                                    for (let k = 1; k < stack.length; k++) res += stack[k];
+                                } else if (op === "*") {
+                                    for (let k = 1; k < stack.length; k++) {
+                                        let temp = res;
+                                        for (let n = 1; n < stack[k]; n++) res += temp;
+                                    }
+                                }
+                                stack = [res]; 
+                            }
+                            pc++; continue;
+                        } else if (op === "-") {
+                            if (stack.length > 0) {
+                                let res = stack[0];
+                                for (let k = 1; k < stack.length; k++) res -= stack[k];
+                                stack = [res];
+                            }
+                            pc++; continue;
+                        }
+                    }
+
+                    if (op === "<") stack.push(0);
+                    else if (op === ">") stack.pop();
+                    else if (op === "^") stack = [];
+                    else if (op === "+") { if (stack.length > 0) stack[stack.length - 1]++; }
+                    else if (op === "-") { if (stack.length > 0) stack[stack.length - 1]--; }
+                    else if (op === ">#") {
+                        if (stack.length > 0) output += String.fromCharCode(stack.pop());
+                    } 
+                    else if (op === "/") {
+                        let cond = stack.pop() || 0;
+                        if (cond === 0) pc = (elseMap[pc] !== undefined) ? elseMap[pc] : matchMap[pc];
+                    } 
+                    else if (op === "_") { pc = matchMap[pc]; } 
+                    else if (op === "$") {
+                        let cond = stack.length > 0 ? stack[stack.length - 1] : 0;
+                        if (cond === 0) pc = matchMap[pc];
+                    } 
+                    else if (op === "@") {
+                         if (systemStack.length === 0 && stack.length > 0) systemStack.push(stack.pop());
+                         if (systemStack.length > 0) {
+                             let count = systemStack[systemStack.length - 1];
+                             if (count <= 0) {
+                                 systemStack.pop();
+                                 pc = matchMap[pc];
+                             } else { systemStack[systemStack.length - 1]--; }
+                         } else { pc = matchMap[pc]; }
+                    }
+                    pc++;
+                }
+                if (steps >= maxSteps) output += "\n[警告] 达到最大步数，死循环可能已触发！";
+            } catch (e) {
+                output += "\n[执行错误] " + e.message;
+            }
+            return output || "(运行完毕，无输出)";
+        }
+
+        const outputDiv = document.getElementById('output');
+        const strInput = document.getElementById('strInput');
+        const statusMsg = document.getElementById('statusMsg');
+        const runBtn = document.getElementById('runBtn');
+
+        document.getElementById('genBtn').addEventListener('click', () => {
+            let text = strInput.value;
+            if (!text) { statusMsg.textContent = "请输入文本"; return; }
+            let generatedCode = `~!@#$ 自动生成： ${text} $#@!~\n`;
+            let totalPlus = 0;
+            for (let i = 0; i < text.length; i++) {
+                let charCode = text.charCodeAt(i);
+                if (charCode > 127) { statusMsg.textContent = "仅支持英文/数字 ASCII"; continue; }
+                generatedCode += "<\n" + "+".repeat(charCode) + "\n>#\n";
+                totalPlus += charCode;
+            }
+            codeInput.value = generatedCode;
+            updateHighlight();
+            statusMsg.textContent = `生成成功！共敲了 ${totalPlus} 个加号。`;
+        });
+
+        document.getElementById('copyBtn').addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(codeInput.value);
+                statusMsg.textContent = "已复制！";
+            } catch (err) {
+                codeInput.select();
+                document.execCommand('copy');
+                statusMsg.textContent = "已复制 (兼容模式)！";
+            }
+            setTimeout(() => statusMsg.textContent = "", 3000);
+        });
+
+        runBtn.addEventListener('click', () => {
+            outputDiv.textContent = ">> 正在编译并执行...\n";
+            setTimeout(() => {
+                try {
+                    let result = runShitCode(codeInput.value);
+                    outputDiv.textContent = ">> 输出结果:\n" + result;
+                } catch (e) {
+                    outputDiv.textContent = ">> [编译错误]\n" + e.message;
+                }
+            }, 50);
+        });
+
+        document.getElementById('clearBtn').addEventListener('click', () => {
+            outputDiv.textContent = "";
+            statusMsg.textContent = "";
+        });
+    </script>
+</body>
+</html>
