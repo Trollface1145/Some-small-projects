@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bool Language IDE & Interpreter</title>
+    <style>
+        /* CSS 部分基本保持不变，增加底部控制台区 */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Consolas', monospace; background-color: #1e1e1e; color: #d4d4d4; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        .title-bar { background-color: #323233; height: 35px; display: flex; align-items: center; padding: 0 15px; font-size: 12px; color: #999; justify-content: space-between; }
+        .main-container { display: flex; flex: 1; min-height: 0; }
+        .activity-bar { width: 48px; background-color: #333; display: flex; flex-direction: column; align-items: center; padding-top: 10px; }
+        .sidebar { width: 180px; background-color: #252526; border-right: 1px solid #1e1e1e; font-size: 13px; }
+        .sidebar-header { padding: 10px; font-size: 11px; color: #bbb; letter-spacing: 1px; }
+        .file-item { padding: 6px 10px 6px 20px; color: #e0e0e0; background: #37373d; display: flex; align-items: center; gap: 8px; }
+        
+        .editor-wrapper { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+        .tabs { background-color: #252526; display: flex; height: 35px; }
+        .tab { background-color: #1e1e1e; padding: 0 15px; display: flex; align-items: center; font-size: 13px; color: #fff; border-top: 1px solid #007acc; }
+        
+        .editor-container { flex: 1; position: relative; background-color: #1e1e1e; display: flex; overflow: hidden; }
+        .line-numbers { width: 40px; background-color: #1e1e1e; color: #858585; text-align: right; padding: 10px 10px 10px 0; line-height: 1.5; user-select: none; border-right: 1px solid #333; overflow: hidden; }
+        .text-layer { flex: 1; position: relative; overflow: hidden; }
+        #highlighting { position: absolute; top: 0; left: 0; width: 100%; height: 100%; padding: 10px; white-space: pre; pointer-events: none; overflow: auto; }
+        #codeInput { position: absolute; top: 0; left: 0; width: 100%; height: 100%; padding: 10px; background: transparent; color: transparent; caret-color: #aeafad; border: none; outline: none; resize: none; white-space: pre; overflow: auto; z-index: 2; }
+        
+        .no-highlight #highlighting { display: none; }
+        .no-highlight #codeInput { color: #d4d4d4; z-index: 3; }
+
+        .token-comment { color: #6a9955; font-style: italic; }
+        .token-keyword { color: #569cd6; font-weight: bold; }
+        .token-type { color: #4ec9b0; }
+        .token-string { color: #ce9178; }
+        .token-number { color: #b5cea8; }
+        .token-operator { color: #d4d4d4; }
+        .token-builtin { color: #dcdcaa; }
+
+        .actions { display: flex; gap: 10px; padding: 5px 15px; background-color: #1e1e1e; border-top: 1px solid #333;}
+        button { background-color: #0e639c; color: white; border: none; padding: 4px 12px; border-radius: 2px; cursor: pointer; font-size: 12px; }
+        button:hover { background-color: #1177bb; }
+        button.run { background-color: #238636; }
+        button.run:hover { background-color: #2ea043; }
+
+        /* 底部控制台区 */
+        .console-area {
+            height: 200px;
+            background-color: #1e1e1e;
+            border-top: 1px solid #333;
+            display: flex;
+            flex-direction: column;
+        }
+        .console-header { background: #252526; padding: 5px 15px; font-size: 12px; color: #ccc; }
+        #output {
+            flex: 1; padding: 10px; color: #3fb950; overflow-y: auto; font-family: monospace; white-space: pre-wrap;
+        }
+
+        .settings-panel { display: none; position: absolute; top: 35px; right: 15px; background: #252526; border: 1px solid #454545; padding: 15px; z-index: 100; border-radius: 4px; width: 220px; }
+        .setting-row { display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 13px; }
+    </style>
+</head>
+<body>
+
+    <div class="title-bar">
+        <div>Bool Language IDE</div>
+        <div>main.bool - Creative Gears</div>
+        <div>⚙️ <span id="settingsBtn" style="cursor:pointer;">设置</span></div>
+    </div>
+
+    <div class="settings-panel" id="settingsPanel">
+        <div class="setting-row">
+            <span>语法高亮</span>
+            <input type="checkbox" id="toggleHighlight" checked>
+        </div>
+        <div class="setting-row">
+            <span>只读模式</span>
+            <input type="checkbox" id="toggleReadonly">
+        </div>
+    </div>
+
+    <div class="main-container">
+        <div class="activity-bar">
+            <svg class="activity-icon active" viewBox="0 0 24 24" width="24" height="24" fill="#fff"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+        </div>
+
+        <div class="sidebar">
+            <div class="sidebar-header">资源管理器</div>
+            <div class="file-item">
+                📄 main.bool
+            </div>
+        </div>
+
+        <div class="editor-wrapper">
+            <div class="tabs">
+                <div class="tab">main.bool</div>
+            </div>
+            
+            <div class="editor-container" id="editorContainer">
+                <div class="line-numbers" id="lineNumbers">1</div>
+                <div class="text-layer">
+                    <pre id="highlighting"><code id="highlighting-content"></code></pre>
+                    <textarea id="codeInput" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" wrap="off"></textarea>
+                </div>
+            </div>
+
+            <div class="actions">
+                <button id="copyBtn">📋 复制代码</button>
+                <button id="clearBtn" style="background:#d16969;">清空</button>
+                <button id="runBtn" class="run">▶ 运行 (Ctrl+Enter)</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="console-area">
+        <div class="console-header">OUTPUT (控制台)</div>
+        <div id="output"></div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. 初始化与 UI 逻辑
+        // ==========================================
+        const codeInput = document.getElementById('codeInput');
+        const highlightingContent = document.getElementById('highlighting-content');
+        const highlightingLayer = document.getElementById('highlighting');
+        const lineNumbers = document.getElementById('lineNumbers');
+        const outputConsole = document.getElementById('output');
+        
+        const settingsBtn = document.getElementById('settingsBtn');
+        const settingsPanel = document.getElementById('settingsPanel');
+        const toggleHighlight = document.getElementById('toggleHighlight');
+        const toggleReadonly = document.getElementById('toggleReadonly');
+
+        const defaultCode = `:$ Bool 语言入门示例
+function:main {
+    i: a = 10,
+    i: b = 20,
+    print ("Hello, Bool!"),
+    print ("Sum is:" $ a + b),
+    
+    if (a << b) {
+        print ("a is greater"),
+    } else {
+        print ("b is greater"),
+    }
+    return: 0,
+}`;
+        codeInput.value = defaultCode;
+
+        function updateHighlight() {
+            if (!toggleHighlight.checked) return;
+            let code = codeInput.value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+            
+            // 保护注释
+            let comments = [];
+            code = code.replace(/(:\$.*)/g, (m) => { comments.push(m); return `___C_${comments.length - 1}___`; });
+            
+            code = code.replace(/("[^"]*")/g, '<span class="token-string">$1</span>');
+            code = code.replace(/\b(i:|l:|c:|d:|bl:|ls:|obj:|arr:|ptr:|stk:)/g, '<span class="token-type">$1</span>');
+            code = code.replace(/\b(function:|return:|if|else|while|for)\b/g, '<span class="token-keyword">$1</span>');
+            code = code.replace(/\b(print|input)\b/g, '<span class="token-builtin">$1</span>');
+            code = code.replace(/\b(\d+(\.\d+)?)\b/g, '<span class="token-number">$1</span>');
+            
+            // 运算符保护
+            let parts = code.split(/(<[^>]+>)/g);
+            for (let i = 0; i < parts.length; i++) {
+                if (parts[i] && parts[i][0] !== '<') {
+                    parts[i] = parts[i].replace(/(\$|<<|>>|<=|>=|===|!==|&&|\|\||!|=|\+|\-|\*|\/)/g, '<span class="token-operator">$1</span>');
+                }
+            }
+            code = parts.join('');
+            
+            // 还原注释
+            code = code.replace(/___C_(\d+)___/g, (m, i) => `<span class="token-comment">${comments[i]}</span>`);
+            
+            highlightingContent.innerHTML = code;
+            let lines = codeInput.value.split('\n').length;
+            lineNumbers.innerHTML = Array(lines).fill(0).map((_, i) => i + 1).join('<br>');
+        }
+
+        codeInput.addEventListener('input', updateHighlight);
+        codeInput.addEventListener('scroll', () => {
+            highlightingLayer.scrollTop = codeInput.scrollTop;
+            highlightingLayer.scrollLeft = codeInput.scrollLeft;
+            lineNumbers.scrollTop = codeInput.scrollTop;
+        });
+        
+        codeInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Tab') {
+                e.preventDefault();
+                const start = codeInput.selectionStart;
+                codeInput.value = codeInput.value.substring(0, start) + "    " + codeInput.value.substring(codeInput.selectionEnd);
+                codeInput.selectionStart = codeInput.selectionEnd = start + 4;
+                updateHighlight();
+            }
+            if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); runBtn.click(); }
+        });
+
+        settingsBtn.addEventListener('click', () => settingsPanel.style.display = settingsPanel.style.display === 'block' ? 'none' : 'block');
+        toggleHighlight.addEventListener('change', (e) => {
+            if(e.target.checked) document.getElementById('editorContainer').classList.remove('no-highlight');
+            else document.getElementById('editorContainer').classList.add('no-highlight');
+            updateHighlight();
+        });
+        toggleReadonly.addEventListener('change', (e) => codeInput.readOnly = e.target.checked);
+        document.getElementById('clearBtn').addEventListener('click', () => { codeInput.value = ""; outputConsole.innerHTML = ""; updateHighlight(); });
+        document.getElementById('copyBtn').addEventListener('click', () => { navigator.clipboard.writeText(codeInput.value); });
+
+        // ==========================================
+        // 2. Lexer (词法分析器)
+        // ==========================================
+        function tokenize(source) {
+            let tokens = [];
+            let pos = 0;
+            const keywords = ["function:", "return:", "if", "else", "while", "for", "print", "input"];
+            const types = ["i:", "l:", "c:", "d:", "bl:", "ls:", "obj:", "arr:", "ptr:", "stk:"];
+
+            while (pos < source.length) {
+                let char = source[pos];
+
+                // 跳过空白
+                if (/\s/.test(char)) { pos++; continue; }
+
+                // 注释 :$
+                if (char === ':' && source[pos + 1] === '$') {
+                    while (pos < source.length && source[pos] !== '\n') pos++;
+                    continue;
+                }
+
+                // 字符串
+                if (char === '"') {
+                    let str = '';
+                    pos++;
+                    while (pos < source.length && source[pos] !== '"') { str += source[pos]; pos++; }
+                    pos++;
+                    tokens.push({ type: 'STRING', value: str });
+                    continue;
+                }
+
+                // 数字
+                if (/\d/.test(char)) {
+                    let num = '';
+                    while (pos < source.length && /[\d.]/.test(source[pos])) { num += source[pos]; pos++; }
+                    tokens.push({ type: 'NUMBER', value: Number(num) });
+                    continue;
+                }
+
+                // 标识符与关键字
+                if (/[a-zA-Z_]/.test(char)) {
+                    let id = '';
+                    while (pos < source.length && /[a-zA-Z0-9_]/.test(source[pos])) { id += source[pos]; pos++; }
+
+                    // 判断是否是带冒号的类型/关键字
+                    if (source[pos] === ':') {
+                        id += ':';
+                        pos++;
+                    }
+
+                    if (keywords.includes(id)) tokens.push({ type: 'KEYWORD', value: id });
+                    else if (types.includes(id)) tokens.push({ type: 'TYPE', value: id });
+                    else tokens.push({ type: 'IDENTIFIER', value: id });
+                    continue;
+                }
+
+                // 多字符运算符
+                let threeChars = source.substring(pos, pos + 3);
+                let twoChars = source.substring(pos, pos + 2);
+                if (["===", "!=="].includes(threeChars)) { tokens.push({ type: 'OP', value: threeChars }); pos += 3; continue; }
+                if (["<<", ">>", "<=", ">=", "&&", "||"].includes(twoChars)) { tokens.push({ type: 'OP', value: twoChars }); pos += 2; continue; }
+
+                // 单字符符号
+                if ("{}()[],$=+*/%!<>;".includes(char)) { // 加入分号以备不时之需
+                    tokens.push({ type: 'OP', value: char });
+                    pos++;
+                    continue;
+                }
+
+                throw new Error(`未知字符: '${char}' 在位置 ${pos}`);
+            }
+            return tokens;
+        }
+
+        // ==========================================
+        // 3. Parser (语法分析器)
+        // ==========================================
+        function parse(tokens) {
+            let pos = 0;
+            function peek() { return tokens[pos]; }
+            function consume(type, value) {
+                let t = tokens[pos];
+                if (!t || (type && t.type !== type) || (value && t.value !== value)) {
+                    throw new Error(`语法错误: 期望 '${value || type}'，但得到 '${t ? t.value : 'EOF'}'`);
+                }
+                pos++;
+                return t;
+            }
+
+            function parseProgram() {
+                let body = [];
+                while (pos < tokens.length) {
+                    body.push(parseStatement());
+                }
+                return { type: "Program", body };
+            }
+
+            function parseBlock() {
+                consume('OP', '{');
+                let body = [];
+                while (peek() && peek().value !== '}') {
+                    body.push(parseStatement());
+                }
+                consume('OP', '}');
+                return body;
+            }
+
+            function parseStatement() {
+                let t = peek();
+                if (!t) return null;
+
+                // 函数定义
+                if (t.type === 'KEYWORD' && t.value === 'function:') {
+                    consume('KEYWORD');
+                    let name = consume('IDENTIFIER').value;
+                    let params = [];
+                    if (peek() && peek().value === '(') {
+                        consume('OP', '(');
+                        while (peek() && peek().value !== ')') {
+                            params.push(consume('IDENTIFIER').value);
+                            if (peek() && peek().value === '$') consume('OP', '$');
+                        }
+                        consume('OP', ')');
+                    }
+                    let body = parseBlock();
+                    return { type: "FunctionDef", name, params, body };
+                }
+
+                // If 条件
+                if (t.type === 'KEYWORD' && t.value === 'if') {
+                    consume('KEYWORD');
+                    consume('OP', '(');
+                    let condition = parseExpression();
+                    consume('OP', ')');
+                    let thenBlock = parseBlock();
+                    let elseBlock = null;
+                    if (peek() && peek().type === 'KEYWORD' && peek().value === 'else') {
+                        consume('KEYWORD');
+                        elseBlock = parseBlock();
+                    }
+                    return { type: "If", condition, thenBlock, elseBlock };
+                }
+
+                // While 循环
+                if (t.type === 'KEYWORD' && t.value === 'while') {
+                    consume('KEYWORD');
+                    consume('OP', '(');
+                    let condition = parseExpression();
+                    consume('OP', ')');
+                    let body = parseBlock();
+                    return { type: "While", condition, body };
+                }
+
+                // Return
+                if (t.type === 'KEYWORD' && t.value === 'return:') {
+                    consume('KEYWORD');
+                    let val = parseExpression();
+                    if (peek() && peek().value === ',') consume('OP', ',');
+                    return { type: "Return", value: val };
+                }
+
+                // 变量声明
+                if (t.type === 'TYPE') {
+                    let varType = consume('TYPE').value;
+                    let name = consume('IDENTIFIER').value;
+                    let init = null;
+                    if (peek() && peek().value === '=') {
+                        consume('OP', '=');
+                        init = parseExpression();
+                    }
+                    if (peek() && peek().value === ',') consume('OP', ',');
+                    return { type: "VarDecl", varType, name, init };
+                }
+
+                // 表达式语句 (函数调用、重新赋值)
+                let expr = parseExpression();
+                if (peek() && peek().value === ',') consume('OP', ',');
+                return { type: "ExpressionStmt", expression: expr };
+            }
+
+            function parseExpression() {
+                return parseAssignment();
+            }
+
+            function parseAssignment() {
+                let left = parseLogicalOr();
+                if (peek() && peek().value === '=') {
+                    consume('OP', '=');
+                    let right = parseAssignment();
+                    return { type: "Assign", left, right };
+                }
+                return left;
+            }
+
+            function parseLogicalOr() {
+                let left = parseEquality();
+                while (peek() && peek().value === '||') {
+                    let op = consume('OP').value;
+                    let right = parseEquality();
+                    left = { type: "BinaryExpr", op, left, right };
+                }
+                return left;
+            }
+
+            function parseEquality() {
+                let left = parseComparison();
+                while (peek() && (peek().value === '===' || peek().value === '!==')) {
+                    let op = consume('OP').value;
+                    let right = parseComparison();
+                    left = { type: "BinaryExpr", op, left, right };
+                }
+                return left;
+            }
+
+            function parseComparison() {
+                let left = parseAdditive();
+                while (peek() && ["<<", ">>", "<=", ">="].includes(peek().value)) {
+                    let op = consume('OP').value;
+                    let right = parseAdditive();
+                    left = { type: "BinaryExpr", op, left, right };
+                }
+                return left;
+            }
+
+            function parseAdditive() {
+                let left = parseMultiplicative();
+                while (peek() && (peek().value === '+' || peek().value === '-')) {
+                    let op = consume('OP').value;
+                    let right = parseMultiplicative();
+                    left = { type: "BinaryExpr", op, left, right };
+                }
+                return left;
+            }
+
+            function parseMultiplicative() {
+                let left = parseCallMember();
+                while (peek() && (peek().value === '*' || peek().value === '/' || peek().value === '%')) {
+                    let op = consume('OP').value;
+                    let right = parseCallMember();
+                    left = { type: "BinaryExpr", op, left, right };
+                }
+                return left;
+            }
+
+            function parseCallMember() {
+                let expr = parsePrimary();
+                while (peek()) {
+                    if (peek().value === '(') {
+                        consume('OP', '(');
+                        let args = [];
+                        while (peek() && peek().value !== ')') {
+                            args.push(parseExpression());
+                            if (peek() && peek().value === '$') consume('OP', '$');
+                        }
+                        consume('OP', ')');
+                        expr = { type: "Call", callee: expr, args };
+                    } else if (peek().value === '.') {
+                        consume('OP', '.');
+                        let property = consume('IDENTIFIER').value;
+                        expr = { type: "Member", object: expr, property };
+                    } else if (peek().value === '[') {
+                        consume('OP', '[');
+                        let index = parseExpression();
+                        consume('OP', ']');
+                        expr = { type: "Index", object: expr, index };
+                    } else break;
+                }
+                return expr;
+            }
+
+            function parsePrimary() {
+                let t = peek();
+                if (t.type === 'NUMBER') { consume('NUMBER'); return { type: "Number", value: t.value }; }
+                if (t.type === 'STRING') { consume('STRING'); return { type: "String", value: t.value }; }
+                if (t.type === 'IDENTIFIER') { consume('IDENTIFIER'); return { type: "Identifier", name: t.value }; }
+                if (t.type === 'KEYWORD' && (t.value === 'print' || t.value === 'input')) {
+                    consume('KEYWORD');
+                    return { type: "Identifier", name: t.value };
+                }
+                if (t.value === '(') {
+                    consume('OP', '(');
+                    let expr = parseExpression();
+                    consume('OP', ')');
+                    return expr;
+                }
+                if (t.value === '[') {
+                    consume('OP', '[');
+                    let elements = [];
+                    while (peek() && peek().value !== ']') {
+                        elements.push(parseExpression());
+                        if (peek() && peek().value === '$') consume('OP', '$');
+                    }
+                    consume('OP', ']');
+                    return { type: "ArrayLiteral", elements };
+                }
+                throw new Error(`意外的 Token: '${t.value}'`);
+            }
+
+            return parseProgram();
+        }
+
+        // ==========================================
+        // 4. Interpreter (解释执行引擎)
+        // ==========================================
+        class Environment {
+            constructor(parent = null) {
+                this.vars = new Map();
+                this.parent = parent;
+            }
+            declare(name, value) { this.vars.set(name, value); }
+            get(name) {
+                if (this.vars.has(name)) return this.vars.get(name);
+                if (this.parent) return this.parent.get(name);
+                throw new Error(`未定义的变量: ${name}`);
+            }
+            assign(name, value) {
+                if (this.vars.has(name)) { this.vars.set(name, value); return; }
+                if (this.parent) { this.parent.assign(name, value); return; }
+                throw new Error(`无法赋值，变量未声明: ${name}`);
+            }
+        }
+
+        const globalEnv = new Environment();
+
+        // 内置函数实现
+        globalEnv.declare('print', (args) => {
+            outputConsole.innerHTML += args.join('') + '\n';
+            outputConsole.scrollTop = outputConsole.scrollHeight;
+            return null;
+        });
+        
+        globalEnv.declare('input', (args) => {
+            let promptText = args.length > 0 ? args[0] : "Input:";
+            let userInput = prompt(promptText);
+            return userInput; // 简单处理，实际应做类型校验
+        });
+
+        async function evaluate(node, env) {
+            if (!node) return null;
+            switch (node.type) {
+                case "Program":
+                    for (let stmt of node.body) await evaluate(stmt, env);
+                    break;
+                case "Number": return node.value;
+                case "ExpressionStmt": 
+                    return await evaluate(node.expression, env);
+                case "String": return node.value;
+                case "Identifier": return env.get(node.name);
+                case "ArrayLiteral": {
+                    let arr = [];
+                    for (let el of node.elements) arr.push(await evaluate(el, env));
+                    return arr;
+                }
+                case "VarDecl": {
+                    let val = node.init ? await evaluate(node.init, env) : (node.varType === "arr:" ? [] : 0);
+                    env.declare(node.name, val);
+                    break;
+                }
+                case "Assign": {
+                    let val = await evaluate(node.right, env);
+                    if (node.left.type === "Identifier") env.assign(node.left.name, val);
+                    else throw new Error("暂不支持复杂赋值");
+                    return val;
+                }
+                case "BinaryExpr": {
+                    let left = await evaluate(node.left, env);
+                    let right = await evaluate(node.right, env);
+                    switch (node.op) {
+                        case '+': return left + right;
+                        case '-': return left - right;
+                        case '*': return left * right;
+                        case '/': return left / right;
+                        case '%': return left % right;
+                        case '<<': return left > right; // Bool 特色
+                        case '>>': return left < right;
+                        case '>=': return left >= right;
+                        case '<=': return left <= right;
+                        case '===': return left === right;
+                        case '!==': return left !== right;
+                        case '&&': return left && right;
+                        case '||': return left || right;
+                        default: throw new Error(`未知运算符 ${node.op}`);
+                    }
+                }
+                case "If": {
+                    let cond = await evaluate(node.condition, env);
+                    if (cond) {
+                        let newEnv = new Environment(env);
+                        for (let stmt of node.thenBlock) await evaluate(stmt, newEnv);
+                    } else if (node.elseBlock) {
+                        let newEnv = new Environment(env);
+                        for (let stmt of node.elseBlock) await evaluate(stmt, newEnv);
+                    }
+                    break;
+                }
+                case "While": {
+                    while (await evaluate(node.condition, env)) {
+                        let newEnv = new Environment(env);
+                        for (let stmt of node.body) await evaluate(stmt, newEnv);
+                    }
+                    break;
+                }
+                case "FunctionDef": {
+                    env.declare(node.name, { type: "Function", node, closure: env });
+                    break;
+                }
+                case "Call": {
+                    let callee = await evaluate(node.callee, env);
+                    let args = [];
+                    for (let a of node.args) args.push(await evaluate(a, env));
+                    
+                    if (typeof callee === 'function') return callee(args); // 内置函数
+                    if (callee && callee.type === "Function") {
+                        let localEnv = new Environment(callee.closure);
+                        for (let i = 0; i < callee.node.params.length; i++) {
+                            localEnv.declare(callee.node.params[i], args[i]);
+                        }
+                        try {
+                            for (let stmt of callee.node.body) await evaluate(stmt, localEnv);
+                        } catch (ret) {
+                            if (ret.type === "ReturnSignal") return ret.value;
+                            throw ret;
+                        }
+                        return null;
+                    }
+                    throw new Error("不是一个函数");
+                }
+                case "Return": {
+                    let val = await evaluate(node.value, env);
+                    throw { type: "ReturnSignal", value: val }; // 通过抛异常实现 return
+                }
+                default:
+                    throw new Error(`未知节点类型: ${node.type}`);
+            }
+        }
+
+        // ==========================================
+        // 5. 运行按钮绑定
+        // ==========================================
+        const runBtn = document.getElementById('runBtn');
+        runBtn.addEventListener('click', async () => {
+            outputConsole.innerHTML = ""; // 清空控制台
+            try {
+                let source = codeInput.value;
+                let tokens = tokenize(source);
+                let ast = parse(tokens);
+                
+                // 1. 先把顶层所有的函数定义（如 main）注册到全局环境中
+                for (let stmt of ast.body) {
+                    if (stmt.type === "FunctionDef") {
+                        await evaluate(stmt, globalEnv);
+                    }
+                }
+
+                // 2. 安全地查找 main 函数
+                let mainFunc = globalEnv.vars.get('main');
+                if (mainFunc && mainFunc.type === "Function") {
+                    let localEnv = new Environment(globalEnv);
+                    try {
+                        for (let stmt of mainFunc.node.body) {
+                            await evaluate(stmt, localEnv);
+                        }
+                    } catch (e) {
+                        if (e.type === "ReturnSignal") {
+                            // 正常 return
+                        } else {
+                            throw e;
+                        }
+                    }
+                } else {
+                    // 如果没有 main，就把除了函数定义之外的代码当成脚本跑
+                    for (let stmt of ast.body) {
+                        if (stmt.type !== "FunctionDef") {
+                            await evaluate(stmt, globalEnv);
+                        }
+                    }
+                }
+            } catch (e) {
+                if (e.type === "ReturnSignal") {
+                    outputConsole.innerHTML += `\n[Program returned]: ${e.value}`;
+                } else {
+                    outputConsole.innerHTML += `\n<span style="color:#f85149;">[Error]: ${e.message}</span>`;
+                }
+            }
+        }); 
+
+        updateHighlight();
+    </script>
+</body>
+</html>
